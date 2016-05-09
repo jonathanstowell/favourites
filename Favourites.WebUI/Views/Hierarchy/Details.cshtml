@@ -1,0 +1,12 @@
+﻿@using Favourites.WebUI.Helper
+@model Favourites.Domain.Root<Favourites.Domain.Favourite>
+
+@{
+    ViewBag.Title = "title";
+}
+
+<h2>@Model.Description</h2>
+
+<ul>
+    @Html.OutputHierarchyFromLeaf(Model)
+</ul>

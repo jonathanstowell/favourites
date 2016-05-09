@@ -1,0 +1,16 @@
+﻿@using Favourites.WebUI.Helper
+@model IList<Favourites.Domain.Root<Favourites.Domain.Favourite>>
+
+@{
+    ViewBag.Title = "title";
+}
+
+<h2>Levels</h2>
+
+<a href="@Url.Action("AddLevel")">Add Level</a>
+<ul>
+@foreach (var item in Model)
+{
+    @Html.OutputHierarchy(item)
+}
+</ul>

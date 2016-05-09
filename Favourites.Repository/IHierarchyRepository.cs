@@ -6,7 +6,10 @@ namespace Favourites.Repository
 {
     public interface IHierarchyRepository<T> where T : class
     {
-        Root<Favourite> GetUser(Guid id);
-        IList<T> GetForUser(Guid id);
+        IList<Root<T>> GetAll();
+        Root<T> GetForLevel(Guid id);
+        IList<T> GetFavouritesForLevel(Guid id);
+        void AddChild(Guid? parent, string description);
+        void AddFavourite(Guid? owner, string sedol);
     }
 }

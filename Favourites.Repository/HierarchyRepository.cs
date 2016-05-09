@@ -37,14 +37,14 @@ namespace Favourites.Repository
 
                 foreach (var parent in parents)
                 {
-                    ret.Add(MapNormal(parent.Value, children));
+                    ret.Add(MapFromRoot(parent.Value, children));
                 }
 
                 return ret;
             }
         }
 
-        public Root<Favourite> GetUser(Guid id)
+        public Root<Favourite> GetForLevel(Guid id)
         {
             using (var conn = new SqlConnection(@"Server=.\SQLExpress;Database=Favourites;Trusted_Connection=True;"))
             {
@@ -65,12 +65,12 @@ namespace Favourites.Repository
                     (
 	                    SELECT h.Id AS Id, h.Description AS Description, h.ParentId AS Parent, hf.Id AS FavouriteId, hf.Sedol AS FavouriteSedol, 0 AS Generation
 		                    FROM Hierarchy h
-		                    INNER JOIN Favourites hf ON hf.HierarchyId = h.Id
+		                    LEFT JOIN Favourites hf ON hf.HierarchyId = h.Id
 		                    WHERE h.Id = @id
 	                    UNION ALL
 	                    SELECT np.Id AS Id, np.Description AS Description, np.ParentId AS Parent, f.Id AS FavouriteId, f.Sedol AS FavouriteSedol, np.Generation AS Generation
 		                    FROM  nodeParents np
-		                    INNER JOIN Favourites f ON f.HierarchyId = np.Id
+		                    LEFT JOIN Favourites f ON f.HierarchyId = np.Id
 		                    WHERE np.Id <> @id
                     )
 
@@ -82,13 +82,13 @@ namespace Favourites.Repository
                     .GroupBy(x => x.Id)
                     .ToDictionary(x => x.Key, x => x.ToList());
 
-                var ret = Map(results[id], results);
+                var ret = MapFromLeaf(results[id], results);
 
                 return ret;
             }
         }
 
-        public IList<Favourite> GetForUser(Guid id)
+        public IList<Favourite> GetFavouritesForLevel(Guid id)
         {
             using (var conn = new SqlConnection(@"Server=.\SQLExpress;Database=Favourites;Trusted_Connection=True;"))
             {
@@ -127,7 +127,33 @@ namespace Favourites.Repository
             }
         }
 
-        private static Root<Favourite> MapNormal(List<FavouriteQuery> favouriteQueries, Dictionary<Guid, List<FavouriteQuery>> records, Root<Favourite> parent = null)
+        public void AddChild(Guid? parent, string description)
+        {
+            using (var conn = new SqlConnection(@"Server=.\SQLExpress;Database=Favourites;Trusted_Connection=True;"))
+            {
+                conn.Execute("INSERT INTO Hierarchy (Id, ParentId, Description) VALUES(@id, @parentId, @description)", new
+                {
+                    id = Guid.NewGuid(),
+                    parentId = parent,
+                    description
+                });
+            }
+        }
+
+        public void AddFavourite(Guid? owner, string sedol)
+        {
+            using (var conn = new SqlConnection(@"Server=.\SQLExpress;Database=Favourites;Trusted_Connection=True;"))
+            {
+                conn.Execute("INSERT INTO Favourites (Id, Sedol, HierarchyId) VALUES(@id, @sedol, @hierarchyId)", new
+                {
+                    id = Guid.NewGuid(),
+                    sedol,
+                    hierarchyId = owner
+                });
+            }
+        }
+
+        private static Root<Favourite> MapFromRoot(List<FavouriteQuery> favouriteQueries, Dictionary<Guid, List<FavouriteQuery>> records, Root<Favourite> parent = null)
         {
             var ret = new Root<Favourite>
             {
@@ -137,9 +163,12 @@ namespace Favourites.Repository
 
             foreach (var row in favouriteQueries)
             {
+                if (!row.FavouriteId.HasValue && row.FavouriteSedol == null)
+                    continue;
+
                 ret.Favourites.Add(new Favourite
                 {
-                    Id = row.FavouriteId,
+                    Id = row.FavouriteId.Value,
                     Sedol = row.FavouriteSedol
                 });
             }
@@ -149,13 +178,20 @@ namespace Favourites.Repository
 
             if (records.ContainsKey(ret.Id))
             {
-                ret.Children.Add(MapNormal(records[ret.Id], records, ret));
+                var items = records[ret.Id]
+                    .GroupBy(x => x.Id)
+                    .ToDictionary(x => x.Key, x => x.ToList());
+
+                foreach (var item in items)
+                {
+                    ret.Children.Add(MapFromRoot(item.Value, records, ret));
+                }
             }
 
             return ret;
         }
 
-        private static Root<Favourite> Map(List<FavouriteQuery> favouriteQueries, Dictionary<Guid, List<FavouriteQuery>> records, Root<Favourite> child = null)
+        private static Root<Favourite> MapFromLeaf(List<FavouriteQuery> favouriteQueries, Dictionary<Guid, List<FavouriteQuery>> records, Root<Favourite> child = null)
         {
             var ret = new Root<Favourite>
             {
@@ -165,9 +201,12 @@ namespace Favourites.Repository
 
             foreach (var row in favouriteQueries)
             {
+                if(!row.FavouriteId.HasValue && row.FavouriteSedol == null)
+                    continue;
+
                 ret.Favourites.Add(new Favourite
                 {
-                    Id = row.FavouriteId,
+                    Id = row.FavouriteId.Value,
                     Sedol = row.FavouriteSedol
                 });
             }
@@ -176,7 +215,7 @@ namespace Favourites.Repository
                 ret.Children.Add(child);
 
             if (favouriteQueries[0].ParentId != null)
-                ret.Parent = Map(records[favouriteQueries[0].ParentId.Value], records, ret);
+                ret.Parent = MapFromLeaf(records[favouriteQueries[0].ParentId.Value], records, ret);
 
             return ret;
         }
